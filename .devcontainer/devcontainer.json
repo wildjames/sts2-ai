@@ -1,0 +1,22 @@
+{
+  "name": "STS2 Bot",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {},
+  "mounts": [
+    "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind"
+  ],
+  "postCreateCommand": "cd downloader && poetry install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/downloader/.venv/bin/python"
+      }
+    }
+  }
+}

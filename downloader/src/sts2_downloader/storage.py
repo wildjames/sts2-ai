@@ -23,3 +23,11 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> int:
         for record in records:
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
     return len(records)
+
+
+def write_json(path: Path, data: Any) -> None:
+    """Write a JSON object to a file (overwriting)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")

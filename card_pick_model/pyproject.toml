@@ -1,0 +1,27 @@
+[project]
+name = "card-pick-model"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Jim Wild",email = "james.wild@airelogic.com"}
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click",
+    "numpy",
+    "scikit-learn",
+    "sts2-utils",
+]
+
+[project.scripts]
+sts2-card-pick = "sts2_card_pick.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.poetry]
+packages = [{ include = "sts2_card_pick", from = "src" }]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

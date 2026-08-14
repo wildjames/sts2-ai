@@ -22,6 +22,8 @@ BASE_URL = "https://spire-codex.com"
 LIST_ENDPOINT = "/api/runs/list"
 EXPORT_ENDPOINT = "/api/exports/runs"
 SHARED_ENDPOINT = "/api/runs/shared"
+CARDS_ENDPOINT = "/api/cards"
+RELICS_ENDPOINT = "/api/relics"
 
 DEFAULT_TIMEOUT = 120.0
 
@@ -155,3 +157,25 @@ def iter_export_runs(
             if max_pages and pages_fetched >= max_pages:
                 break
             cursor = next_cursor
+
+
+def get_cards(*, color: str | None = None) -> list[dict[str, Any]]:
+    """Fetch all cards from /api/cards."""
+    params: dict[str, Any] = {}
+    if color is not None:
+        params["color"] = color
+    with httpx.Client(base_url=BASE_URL, timeout=DEFAULT_TIMEOUT, headers=_headers()) as client:
+        resp = client.get(CARDS_ENDPOINT, params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+
+def get_relics(*, pool: str | None = None) -> list[dict[str, Any]]:
+    """Fetch all relics from /api/relics."""
+    params: dict[str, Any] = {}
+    if pool is not None:
+        params["pool"] = pool
+    with httpx.Client(base_url=BASE_URL, timeout=DEFAULT_TIMEOUT, headers=_headers()) as client:
+        resp = client.get(RELICS_ENDPOINT, params=params)
+        resp.raise_for_status()
+        return resp.json()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.sparse import csr_matrix
 
 from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
 from sts2_utils import CardChoiceResult, GameState
@@ -59,30 +60,48 @@ def encode_choice_set(
     card_choices: CardChoiceResult,
     card_vocab: CardVocabulary,
     relic_vocab: RelicVocabulary,
-) -> tuple[np.ndarray, int]:
-    """Encode a card reward screen into a feature matrix and label.
+) -> tuple[csr_matrix, int]:
+    """Encode a card reward screen into a sparse feature matrix and label.
 
     Each offered card becomes one row; skip is appended as the last row.
 
     Returns:
-        ``(X, y)`` where ``X`` has shape ``(n_alternatives, n_features)`` and
-        ``y`` is the 0-based index of the chosen alternative.  If the player
-        skipped, ``y == len(card_choices.offered)`` (the skip row).
+        ``(X, picked_idx)`` where ``X`` is a sparse CSR matrix of shape
+        ``(n_alternatives, n_features)`` and ``picked_idx`` is the 0-based
+        index of the chosen alternative.  If the player skipped,
+        ``picked_idx == len(card_choices.offered)`` (the skip row).
     """
     state_features = encode_state_features(state, card_vocab, relic_vocab)
+    state_nz = state_features.nonzero()[0]
+    state_vals = state_features[state_nz]
 
-    rows: list[np.ndarray] = []
+    n_alts = len(card_choices.offered) + 1
+    n_features = feature_dim(card_vocab, relic_vocab)
+    card_offset = len(card_vocab) + len(relic_vocab) + 2
+
+    row_idx: list[int] = []
+    col_idx: list[int] = []
+    data: list[float] = []
+
+    # Replicate state features into every row
+    for r in range(n_alts):
+        row_idx.extend([r] * len(state_nz))
+        col_idx.extend(state_nz.tolist())
+        data.extend(state_vals.tolist())
+
     picked_idx = len(card_choices.offered)  # default: skip
 
     for i, card in enumerate(card_choices.offered):
-        card_features = encode_card_features(card.id, card_vocab)
-        rows.append(np.concatenate([state_features, card_features]))
+        idx = card_vocab.get(card.id)
+        if idx is not None:
+            row_idx.append(i)
+            col_idx.append(card_offset + idx)
+            data.append(1.0)
         if card_choices.picked is not None and card == card_choices.picked:
             picked_idx = i
 
-    # Skip alternative: zero card features, same state features
-    skip_features = encode_card_features(None, card_vocab)
-    rows.append(np.concatenate([state_features, skip_features]))
-
-    X = np.stack(rows)
+    X = csr_matrix(
+        (np.array(data, dtype=np.float32), (row_idx, col_idx)),
+        shape=(n_alts, n_features),
+    )
     return X, picked_idx

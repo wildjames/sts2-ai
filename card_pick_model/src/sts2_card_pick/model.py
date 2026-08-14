@@ -4,12 +4,41 @@ import json
 from pathlib import Path
 
 import numpy as np
+from scipy import sparse
 from sklearn.linear_model import LogisticRegression
 
 from sts2_card_pick.dataset import Dataset
 from sts2_card_pick.features import encode_card_features, encode_state_features
 from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
 from sts2_utils import GameState
+
+
+def _to_numpy(arr: object) -> np.ndarray:
+    """Convert cupy/cuML arrays to numpy; pass through numpy arrays."""
+    if hasattr(arr, "get"):
+        return arr.get()
+    return np.asarray(arr)
+
+
+def _make_logistic_regression(
+    C: float, max_iter: int, *, gpu: bool
+) -> LogisticRegression:
+    if gpu:
+        from cuml.linear_model import LogisticRegression as CuMLLogisticRegression
+
+        return CuMLLogisticRegression(
+            C=C,
+            penalty="l1",
+            fit_intercept=False,
+            max_iter=max_iter,
+        )
+    return LogisticRegression(
+        C=C,
+        l1_ratio=1.0,
+        solver="saga",
+        fit_intercept=False,
+        max_iter=max_iter,
+    )
 
 
 class CardPickModel:
@@ -26,18 +55,14 @@ class CardPickModel:
         *,
         C: float = 1.0,
         max_iter: int = 1000,
+        gpu: bool = False,
     ) -> None:
         self.card_vocab = card_vocab
         self.relic_vocab = relic_vocab
         self._C = C
         self._max_iter = max_iter
-        self._model = LogisticRegression(
-            C=C,
-            l1_ratio=1.0,
-            solver="liblinear",
-            fit_intercept=False,
-            max_iter=max_iter,
-        )
+        self._gpu = gpu
+        self._model = _make_logistic_regression(C, max_iter, gpu=gpu)
         self._fitted = False
 
     def fit(self, dataset: Dataset) -> None:
@@ -45,30 +70,32 @@ class CardPickModel:
 
         For each choice set, creates pairwise differences
         ``X_chosen - X_other`` (label 1) and the reverse (label 0) so that
-        sklearn sees both classes.
+        sklearn sees both classes.  Uses vectorized sparse indexing to avoid
+        per-group Python loops.
         """
-        pos_rows: list[np.ndarray] = []
-        neg_rows: list[np.ndarray] = []
+        chosen_mask = dataset.y == 1
+        chosen_indices = np.where(chosen_mask)[0]
+        chosen_groups = dataset.groups[chosen_indices]
 
-        for g in np.unique(dataset.groups):
-            mask = dataset.groups == g
-            X_g = dataset.X[mask]
-            y_g = dataset.y[mask]
+        # Map group_id -> row index of chosen card
+        max_group = int(dataset.groups.max())
+        group_to_chosen = np.full(max_group + 1, -1, dtype=np.intp)
+        group_to_chosen[chosen_groups] = chosen_indices
 
-            chosen_mask = y_g == 1
-            if not chosen_mask.any():
-                continue
+        # Non-chosen rows whose group has a valid chosen row
+        non_chosen_indices = np.where(~chosen_mask)[0]
+        matched_chosen = group_to_chosen[dataset.groups[non_chosen_indices]]
+        valid = matched_chosen >= 0
+        non_chosen_indices = non_chosen_indices[valid]
+        matched_chosen = matched_chosen[valid]
 
-            x_chosen = X_g[chosen_mask][0]
-            for x_other in X_g[~chosen_mask]:
-                diff = x_chosen - x_other
-                pos_rows.append(diff)
-                neg_rows.append(-diff)
+        # Vectorized sparse subtraction: chosen - other
+        X_pos = dataset.X[matched_chosen] - dataset.X[non_chosen_indices]
 
-        X_diff = np.vstack(pos_rows + neg_rows)
+        X_diff = sparse.vstack([X_pos, -X_pos], format="csr")
         y_diff = np.concatenate([
-            np.ones(len(pos_rows), dtype=np.float32),
-            np.zeros(len(neg_rows), dtype=np.float32),
+            np.ones(X_pos.shape[0], dtype=np.float32),
+            np.zeros(X_pos.shape[0], dtype=np.float32),
         ])
 
         self._model.fit(X_diff, y_diff)
@@ -83,7 +110,7 @@ class CardPickModel:
         if not self._fitted:
             raise RuntimeError("Model has not been fitted")
 
-        beta = self._model.coef_.ravel()
+        beta = _to_numpy(self._model.coef_).ravel()
         state_feat = encode_state_features(state, self.card_vocab, self.relic_vocab)
 
         keys: list[str] = []
@@ -117,8 +144,8 @@ class CardPickModel:
         self.relic_vocab.to_json(path / "relic_vocab.json")
 
         model_data = {
-            "coef": self._model.coef_.tolist(),
-            "classes": self._model.classes_.tolist(),
+            "coef": _to_numpy(self._model.coef_).tolist(),
+            "classes": _to_numpy(self._model.classes_).tolist(),
             "C": self._C,
             "max_iter": self._max_iter,
         }
@@ -126,7 +153,7 @@ class CardPickModel:
             json.dump(model_data, f)
 
     @classmethod
-    def load(cls, path: str | Path) -> CardPickModel:
+    def load(cls, path: str | Path, *, gpu: bool = False) -> CardPickModel:
         """Load a previously saved model."""
         path = Path(path)
 
@@ -141,6 +168,7 @@ class CardPickModel:
             relic_vocab=relic_vocab,
             C=model_data["C"],
             max_iter=model_data["max_iter"],
+            gpu=gpu,
         )
 
         instance._model.classes_ = np.array(model_data["classes"])

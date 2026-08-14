@@ -18,6 +18,7 @@ sts2-card-pick = "sts2_card_pick.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest"]
+gpu = ["cuml-cu12", "cupy-cuda12x"]
 
 [tool.poetry]
 packages = [{ include = "sts2_card_pick", from = "src" }]

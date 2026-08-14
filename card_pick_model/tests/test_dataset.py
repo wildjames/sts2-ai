@@ -18,6 +18,7 @@ from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
 from sts2_utils import load_run
 
 REAL_DATA_DIR = Path(__file__).resolve().parent / ".." / ".." / "sts2_utils" / "tests" / "test_data"
+DATA_DIR = Path(__file__).resolve().parent / ".." / ".." / "data"
 
 
 def _minimal_run(
@@ -151,7 +152,7 @@ class TestBuildDataset:
     def test_basic_shape(self, real_run):
         card_vocab, relic_vocab = build_vocabularies([real_run])
         dataset = build_dataset([real_run], card_vocab, relic_vocab)
-        assert dataset.X.ndim == 2
+        assert len(dataset.X.shape) == 2
         assert dataset.y.ndim == 1
         assert dataset.groups.ndim == 1
         assert dataset.X.shape[0] == dataset.y.shape[0] == dataset.groups.shape[0]
@@ -202,7 +203,9 @@ class TestBuildDataset:
 
 class TestBuildDatasetFromPath:
     def test_end_to_end(self):
-        dataset, card_vocab, relic_vocab = build_dataset_from_path(REAL_DATA_DIR)
+        dataset, card_vocab, relic_vocab = build_dataset_from_path(
+            REAL_DATA_DIR, DATA_DIR / "cards.json", DATA_DIR / "relics.json",
+        )
         assert dataset.X.shape[0] > 0
         assert len(card_vocab) > 0
         assert len(relic_vocab) > 0

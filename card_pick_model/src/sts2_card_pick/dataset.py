@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 import numpy as np
+from scipy import sparse
 
 from sts2_card_pick.features import encode_choice_set, feature_dim
 from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
@@ -20,15 +21,74 @@ class Dataset:
     """Training dataset for the card pick model.
 
     Attributes:
-        X: Feature matrix ``(n_rows, n_features)``.  Each row is one
+        X: Sparse feature matrix ``(n_rows, n_features)``.  Each row is one
             alternative (offered card or skip) in a choice set.
         y: Binary labels ``(n_rows,)``.  Exactly one row per group is ``1``.
         groups: Integer array ``(n_rows,)`` mapping rows to choice-set IDs.
+        card_vocab: Card vocabulary used to encode features.
+        relic_vocab: Relic vocabulary used to encode features.
     """
 
-    X: np.ndarray
+    X: sparse.csr_matrix
     y: np.ndarray
     groups: np.ndarray
+    card_vocab: CardVocabulary | None = None
+    relic_vocab: RelicVocabulary | None = None
+
+    def save(self, path: str | Path) -> None:
+        """Persist dataset arrays and vocabularies to a directory."""
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        sparse.save_npz(path / "X.npz", self.X)
+        np.save(path / "y.npy", self.y)
+        np.save(path / "groups.npy", self.groups)
+        if self.card_vocab is not None:
+            self.card_vocab.to_json(path / "card_vocab.json")
+        if self.relic_vocab is not None:
+            self.relic_vocab.to_json(path / "relic_vocab.json")
+
+    @classmethod
+    def load(cls, path: str | Path) -> Dataset:
+        """Load a dataset from a directory created by :meth:`save`."""
+        path = Path(path)
+        X = sparse.load_npz(path / "X.npz")
+        y = np.load(path / "y.npy")
+        groups = np.load(path / "groups.npy")
+        card_vocab = (
+            CardVocabulary.from_json(path / "card_vocab.json")
+            if (path / "card_vocab.json").exists() else None
+        )
+        relic_vocab = (
+            RelicVocabulary.from_json(path / "relic_vocab.json")
+            if (path / "relic_vocab.json").exists() else None
+        )
+        return cls(X=X, y=y, groups=groups, card_vocab=card_vocab, relic_vocab=relic_vocab)
+
+    def split(
+        self, train_fraction: float = 0.8, seed: int = 42,
+    ) -> tuple[Dataset, Dataset]:
+        """Split into train/eval datasets by choice-set group."""
+        rng = np.random.default_rng(seed)
+        unique_groups = np.unique(self.groups)
+        shuffled = rng.permutation(unique_groups)
+        n_train = int(len(shuffled) * train_fraction)
+        train_set = set(shuffled[:n_train].tolist())
+
+        train_mask = np.array([g in train_set for g in self.groups])
+        eval_mask = ~train_mask
+
+        return (
+            Dataset(
+                X=self.X[train_mask], y=self.y[train_mask],
+                groups=self.groups[train_mask],
+                card_vocab=self.card_vocab, relic_vocab=self.relic_vocab,
+            ),
+            Dataset(
+                X=self.X[eval_mask], y=self.y[eval_mask],
+                groups=self.groups[eval_mask],
+                card_vocab=self.card_vocab, relic_vocab=self.relic_vocab,
+            ),
+        )
 
 
 def load_runs(path: str | Path) -> Iterator[dict]:
@@ -103,6 +163,22 @@ def build_vocabularies(
     )
 
 
+def build_vocabularies_from_files(
+    cards_json: str | Path,
+    relics_json: str | Path,
+) -> tuple[CardVocabulary, RelicVocabulary]:
+    """Build vocabularies from the static cards.json and relics.json data files."""
+    with open(cards_json) as f:
+        cards = json.load(f)
+    with open(relics_json) as f:
+        relics = json.load(f)
+
+    card_ids = sorted({card["id"] for card in cards})
+    relic_ids = sorted({relic["id"] for relic in relics})
+
+    return CardVocabulary(card_ids), RelicVocabulary(relic_ids)
+
+
 def build_dataset(
     runs: Iterable[dict],
     card_vocab: CardVocabulary,
@@ -110,7 +186,7 @@ def build_dataset(
     player_id: int = 1,
 ) -> Dataset:
     """Pass 2: encode every card-choice screen into feature rows."""
-    all_X: list[np.ndarray] = []
+    all_X: list[sparse.csr_matrix] = []
     all_y: list[np.ndarray] = []
     all_groups: list[np.ndarray] = []
     group_id = 0
@@ -149,30 +225,39 @@ def build_dataset(
     if not all_X:
         n_features = feature_dim(card_vocab, relic_vocab)
         return Dataset(
-            X=np.empty((0, n_features), dtype=np.float32),
+            X=sparse.csr_matrix((0, n_features), dtype=np.float32),
             y=np.empty(0, dtype=np.float32),
             groups=np.empty(0, dtype=np.int64),
+            card_vocab=card_vocab,
+            relic_vocab=relic_vocab,
         )
 
     return Dataset(
-        X=np.concatenate(all_X),
+        X=sparse.vstack(all_X, format="csr"),
         y=np.concatenate(all_y),
         groups=np.concatenate(all_groups),
+        card_vocab=card_vocab,
+        relic_vocab=relic_vocab,
     )
 
 
 def build_dataset_from_path(
-    path: str | Path, player_id: int = 1,
+    path: str | Path,
+    cards_json: str | Path,
+    relics_json: str | Path,
+    player_id: int = 1,
 ) -> tuple[Dataset, CardVocabulary, RelicVocabulary]:
-    """Two-pass dataset construction from a path of run files.
+    """Build a dataset using static card/relic vocabulary files.
 
     Args:
         path: A ``.jsonl`` file or a directory of ``.json`` run files.
+        cards_json: Path to the static ``cards.json`` data file.
+        relics_json: Path to the static ``relics.json`` data file.
         player_id: Which player to extract data for (default ``1``).
 
     Returns:
         ``(dataset, card_vocab, relic_vocab)`` tuple.
     """
-    card_vocab, relic_vocab = build_vocabularies(load_runs(path), player_id)
+    card_vocab, relic_vocab = build_vocabularies_from_files(cards_json, relics_json)
     dataset = build_dataset(load_runs(path), card_vocab, relic_vocab, player_id)
     return dataset, card_vocab, relic_vocab

@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Generator
 
@@ -26,6 +27,31 @@ CARDS_ENDPOINT = "/api/cards"
 RELICS_ENDPOINT = "/api/relics"
 
 DEFAULT_TIMEOUT = 120.0
+MAX_RETRIES = 5
+RETRY_BACKOFF = 2.0  # seconds; doubles each attempt
+
+_RETRYABLE = (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError, httpx.TimeoutException)
+
+
+def _get_with_retry(client: httpx.Client, url: str, **kwargs: Any) -> httpx.Response:
+    """GET with exponential-backoff retry on transient errors."""
+    delay = RETRY_BACKOFF
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = client.get(url, **kwargs)
+            resp.raise_for_status()
+            return resp
+        except _RETRYABLE as exc:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code < 500 or attempt == MAX_RETRIES - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
+    raise RuntimeError("unreachable")
 
 
 def _headers() -> dict[str, str]:
@@ -76,8 +102,7 @@ def list_runs(
             params[key] = val
 
     with httpx.Client(base_url=BASE_URL, timeout=DEFAULT_TIMEOUT, headers=_headers()) as client:
-        resp = client.get(LIST_ENDPOINT, params=params)
-        resp.raise_for_status()
+        resp = _get_with_retry(client, LIST_ENDPOINT, params=params)
         return resp.json()
 
 
@@ -104,8 +129,7 @@ def iter_list_pages(
 def get_shared_run(run_hash: str) -> dict[str, Any]:
     """Fetch a single run's full data by hash."""
     with httpx.Client(base_url=BASE_URL, timeout=DEFAULT_TIMEOUT, headers=_headers()) as client:
-        resp = client.get(f"{SHARED_ENDPOINT}/{run_hash}")
-        resp.raise_for_status()
+        resp = _get_with_retry(client, f"{SHARED_ENDPOINT}/{run_hash}")
         return resp.json()
 
 
@@ -136,8 +160,7 @@ def iter_export_runs(
             if cursor:
                 req_params["cursor"] = cursor
 
-            resp = client.get(EXPORT_ENDPOINT, params=req_params)
-            resp.raise_for_status()
+            resp = _get_with_retry(client, EXPORT_ENDPOINT, params=req_params)
             pages_fetched += 1
 
             content = resp.content

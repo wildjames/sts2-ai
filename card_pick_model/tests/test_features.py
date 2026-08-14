@@ -206,7 +206,8 @@ class TestEncodeChoiceSet:
         offered = [Card(id="CARD.BASH")]
         choices = CardChoiceResult(offered=offered, picked=None)
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
-        skip_row = X[-1]
+        X_dense = X.toarray()
+        skip_row = X_dense[-1]
         card_feature_slice = skip_row[len(card_vocab) + len(relic_vocab) + 2 :]
         assert card_feature_slice.sum() == 0.0
 
@@ -215,13 +216,14 @@ class TestEncodeChoiceSet:
         offered = [Card(id="CARD.BASH"), Card(id="CARD.INFLAME")]
         choices = CardChoiceResult(offered=offered, picked=Card(id="CARD.BASH"))
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
+        X_dense = X.toarray()
         card_start = len(card_vocab) + len(relic_vocab) + 2
         # First row: BASH
-        row0_card = X[0, card_start:]
+        row0_card = X_dense[0, card_start:]
         assert row0_card[card_vocab["CARD.BASH"]] == 1.0
         assert row0_card.sum() == 1.0
         # Second row: INFLAME
-        row1_card = X[1, card_start:]
+        row1_card = X_dense[1, card_start:]
         assert row1_card[card_vocab["CARD.INFLAME"]] == 1.0
         assert row1_card.sum() == 1.0
 
@@ -234,9 +236,10 @@ class TestEncodeChoiceSet:
         offered = [Card(id="CARD.BASH"), Card(id="CARD.INFLAME")]
         choices = CardChoiceResult(offered=offered, picked=Card(id="CARD.BASH"))
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
+        X_dense = X.toarray()
         state_width = len(card_vocab) + len(relic_vocab) + 2
-        for i in range(1, X.shape[0]):
-            np.testing.assert_array_equal(X[0, :state_width], X[i, :state_width])
+        for i in range(1, X_dense.shape[0]):
+            np.testing.assert_array_equal(X_dense[0, :state_width], X_dense[i, :state_width])
 
     def test_deck_counts_in_state_section(self, card_vocab, relic_vocab):
         state = _make_state(deck_ids=["CARD.STRIKE", "CARD.STRIKE", "CARD.BASH"])
@@ -245,7 +248,7 @@ class TestEncodeChoiceSet:
             picked=Card(id="CARD.DEFEND"),
         )
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
-        row = X[0]
+        row = X.toarray()[0]
         assert row[card_vocab["CARD.STRIKE"]] == 2.0
         assert row[card_vocab["CARD.BASH"]] == 1.0
         assert row[card_vocab["CARD.DEFEND"]] == 0.0  # in deck section, not offer
@@ -259,7 +262,7 @@ class TestEncodeChoiceSet:
         )
         X, y = encode_choice_set(state, choices, card_vocab, relic_vocab)
         card_start = len(card_vocab) + len(relic_vocab) + 2
-        assert X[0, card_start:].sum() == 0.0
+        assert X.toarray()[0, card_start:].sum() == 0.0
         assert y == 0
 
     def test_enchanted_card_match(self, card_vocab, relic_vocab):
@@ -337,4 +340,4 @@ class TestEncodeChoiceSetIntegration:
         )
         X, _ = encode_choice_set(state, choices, big_card_vocab, big_relic_vocab)
         hp_idx = len(big_card_vocab) + len(big_relic_vocab)
-        assert X[0, hp_idx] == pytest.approx(30 / 75)
+        assert X.toarray()[0, hp_idx] == pytest.approx(30 / 75)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from scipy.sparse import csr_matrix
 
 from sts2_card_pick.dataset import Dataset
 from sts2_card_pick.model import CardPickModel
@@ -49,7 +50,7 @@ def _synthetic_dataset(card_vocab, relic_vocab, n_groups: int = 40) -> Dataset:
         groups.append(g)
 
     return Dataset(
-        X=np.stack(rows).astype(np.float32),
+        X=csr_matrix(np.stack(rows).astype(np.float32)),
         y=np.array(labels, dtype=np.float32),
         groups=np.array(groups, dtype=np.int64),
     )

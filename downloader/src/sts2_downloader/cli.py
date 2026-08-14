@@ -83,7 +83,7 @@ def list_runs(
         if v is not None
     }
 
-    click.echo(f"Fetching runs → {out_path}")
+    click.echo(f"Fetching runs -> {out_path}")
     for page_runs in iter_list_pages(max_pages=max_pages, **filters):
         n = append_jsonl(out_path, page_runs)
         total += n
@@ -110,7 +110,7 @@ def export(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     total = 0
 
-    click.echo(f"Exporting runs → {out_path}")
+    click.echo(f"Exporting runs -> {out_path}")
     batch: list[dict] = []
     for run in iter_export_runs(limit=page_size, start=start, end=end, max_pages=max_pages):
         batch.append(run)

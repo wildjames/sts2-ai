@@ -1,0 +1,25 @@
+[project]
+name = "sts2-utils"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Jim Wild",email = "james.wild@airelogic.com"}
+]
+requires-python = ">=3.12"
+dependencies = [
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.poetry]
+packages = [{ include = "sts2_utils", from = "src" }]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "ipython (>=9.16.1,<10.0.0)"
+]

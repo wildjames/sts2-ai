@@ -36,30 +36,6 @@ astroid = ["astroid (>=2,<5)"]
 test = ["astroid (>=2,<5)", "pytest (<9.0)", "pytest-cov", "pytest-xdist"]
 
 [[package]]
-name = "card-pick-model"
-version = "0.1.0"
-description = ""
-optional = false
-python-versions = ">=3.12"
-groups = ["main"]
-files = []
-develop = true
-
-[package.dependencies]
-click = "*"
-numpy = "*"
-scikit-learn = "*"
-sts2-utils = "*"
-
-[package.extras]
-gpu = ["cuml-cu12", "cupy-cuda12x"]
-test = ["pytest"]
-
-[package.source]
-type = "directory"
-url = "card_pick_model"
-
-[[package]]
 name = "certifi"
 version = "2026.7.22"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -277,6 +253,30 @@ files = [
     {file = "joblib-1.5.3-py3-none-any.whl", hash = "sha256:5fc3c5039fc5ca8c0276333a188bbd59d6b7ab37fe6632daa76bc7f9ec18e713"},
     {file = "joblib-1.5.3.tar.gz", hash = "sha256:8561a3269e6801106863fd0d6d84bb737be9e7631e33aaed3fb9ce5953688da3"},
 ]
+
+[[package]]
+name = "logit-model"
+version = "0.1.0"
+description = ""
+optional = false
+python-versions = ">=3.12"
+groups = ["main"]
+files = []
+develop = true
+
+[package.dependencies]
+click = "*"
+numpy = "*"
+scikit-learn = "*"
+sts2-utils = "*"
+
+[package.extras]
+gpu = ["cuml-cu12", "cupy-cuda12x"]
+test = ["pytest"]
+
+[package.source]
+type = "directory"
+url = "logit_model"
 
 [[package]]
 name = "matplotlib-inline"
@@ -817,4 +817,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "0b9013a670ac62d9f751bbf071deec4702742fde40602e1fb14a286672700184"
+content-hash = "2105dd44e14b554d4939238b2d0b187af8f71d1318004549f3dd7115fc2d17d0"

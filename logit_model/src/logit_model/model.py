@@ -7,9 +7,9 @@ import numpy as np
 from scipy import sparse
 from sklearn.linear_model import LogisticRegression
 
-from sts2_card_pick.dataset import Dataset
-from sts2_card_pick.features import encode_card_features, encode_state_features
-from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
+from logit_model.dataset import Dataset
+from logit_model.features import encode_state_features, state_dim
+from logit_model.vocabulary import CardVocabulary, RelicVocabulary
 from sts2_utils import GameState
 
 
@@ -34,8 +34,8 @@ def _make_logistic_regression(
         )
     return LogisticRegression(
         C=C,
-        l1_ratio=1.0,
-        solver="saga",
+        penalty="l1",
+        solver="liblinear",
         fit_intercept=False,
         max_iter=max_iter,
     )
@@ -64,14 +64,15 @@ class CardPickModel:
         self._gpu = gpu
         self._model = _make_logistic_regression(C, max_iter, gpu=gpu)
         self._fitted = False
+        self._progress_callback: object | None = None
 
     def fit(self, dataset: Dataset) -> None:
         """Fit the model on a :class:`Dataset`.
 
         For each choice set, creates pairwise differences
-        ``X_chosen - X_other`` (label 1) and the reverse (label 0) so that
-        sklearn sees both classes.  Uses vectorized sparse indexing to avoid
-        per-group Python loops.
+        ``X_chosen - X_other`` (label 1).  A single dummy row with label 0
+        ensures sklearn sees both classes (the symmetric negative is
+        mathematically redundant for logistic regression without intercept).
         """
         chosen_mask = dataset.y == 1
         chosen_indices = np.where(chosen_mask)[0]
@@ -89,16 +90,49 @@ class CardPickModel:
         non_chosen_indices = non_chosen_indices[valid]
         matched_chosen = matched_chosen[valid]
 
-        # Vectorized sparse subtraction: chosen - other
-        X_pos = dataset.X[matched_chosen] - dataset.X[non_chosen_indices]
+        n_pairs = len(non_chosen_indices)
+        n_features = dataset.X.shape[1]
 
-        X_diff = sparse.vstack([X_pos, -X_pos], format="csr")
-        y_diff = np.concatenate([
-            np.ones(X_pos.shape[0], dtype=np.float32),
-            np.zeros(X_pos.shape[0], dtype=np.float32),
-        ])
+        # Pre-allocate output CSR arrays (different cards have non-overlapping
+        # columns, so nnz of difference = sum of nnz of the two rows).
+        row_nnz = np.diff(dataset.X.indptr)
+        pair_nnz = row_nnz[matched_chosen] + row_nnz[non_chosen_indices]
+        total_nnz = int(pair_nnz.sum())
+        del row_nnz
 
-        self._model.fit(X_diff, y_diff)
+        out_data = np.empty(total_nnz, dtype=np.float32)
+        out_indices = np.empty(total_nnz, dtype=np.int32)
+        out_indptr = np.empty(n_pairs + 2, dtype=np.int64)  # +1 for dummy row
+        out_indptr[0] = 0
+        np.cumsum(pair_nnz, out=out_indptr[1:n_pairs + 1])
+        out_indptr[n_pairs + 1] = out_indptr[n_pairs]  # dummy row has 0 nnz
+        del pair_nnz
+
+        # Fill in chunks to limit temporary memory from sparse indexing
+        chunk_size = 2_000_000
+        n_chunks = (n_pairs + chunk_size - 1) // chunk_size
+        for start in range(0, n_pairs, chunk_size):
+            end = min(start + chunk_size, n_pairs)
+            chunk = dataset.X[matched_chosen[start:end]] - dataset.X[non_chosen_indices[start:end]]
+            chunk = chunk.tocsr()
+            nnz_start = int(out_indptr[start])
+            nnz_end = nnz_start + chunk.nnz
+            out_data[nnz_start:nnz_end] = chunk.data
+            out_indices[nnz_start:nnz_end] = chunk.indices
+            del chunk
+            if self._progress_callback is not None:
+                self._progress_callback(1)
+
+        X_train = sparse.csr_matrix(
+            (out_data, out_indices, out_indptr),
+            shape=(n_pairs + 1, n_features),
+        )
+        del out_data, out_indices, out_indptr
+
+        y_train = np.ones(n_pairs + 1, dtype=np.float32)
+        y_train[-1] = 0.0  # dummy row for class balance
+
+        self._model.fit(X_train, y_train)
         self._fitted = True
 
     def predict_proba(
@@ -112,20 +146,25 @@ class CardPickModel:
 
         beta = _to_numpy(self._model.coef_).ravel()
         state_feat = encode_state_features(state, self.card_vocab, self.relic_vocab)
+        V = len(self.card_vocab)
+        S = state_dim(self.card_vocab, self.relic_vocab)
 
         keys: list[str] = []
         scores: list[float] = []
         for card_id in offered_cards:
-            card_feat = encode_card_features(card_id, self.card_vocab)
-            x = np.concatenate([state_feat, card_feat])
+            idx = self.card_vocab.get(card_id)
+            if idx is not None:
+                score = float(beta[idx])
+                interaction_offset = V + idx * S
+                score += float(state_feat @ beta[interaction_offset:interaction_offset + S])
+            else:
+                score = 0.0
             keys.append(card_id)
-            scores.append(float(x @ beta))
+            scores.append(score)
 
-        # Skip alternative
-        skip_feat = encode_card_features(None, self.card_vocab)
-        x_skip = np.concatenate([state_feat, skip_feat])
+        # Skip: all-zero features → score = 0
         keys.append("skip")
-        scores.append(float(x_skip @ beta))
+        scores.append(0.0)
 
         # Softmax
         scores_arr = np.array(scores)
@@ -148,6 +187,7 @@ class CardPickModel:
             "classes": _to_numpy(self._model.classes_).tolist(),
             "C": self._C,
             "max_iter": self._max_iter,
+
         }
         with open(path / "model.json", "w") as f:
             json.dump(model_data, f)

@@ -1,5 +1,5 @@
 [project]
-name = "card-pick-model"
+name = "logit_model"
 version = "0.1.0"
 description = ""
 authors = [
@@ -13,15 +13,15 @@ dependencies = [
     "sts2-utils",
 ]
 
-[project.scripts]
-sts2-card-pick = "sts2_card_pick.cli:main"
+[tool.poetry.scripts]
+logit-model = "logit_model.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest"]
 gpu = ["cuml-cu12", "cupy-cuda12x"]
 
 [tool.poetry]
-packages = [{ include = "sts2_card_pick", from = "src" }]
+packages = [{ include = "logit_model", from = "src" }]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

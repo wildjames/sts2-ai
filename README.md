@@ -12,5 +12,5 @@ After that, you can run the commands from the repository root:
 
 ```bash
 poetry run sts2-download --help
-poetry run sts2-card-pick --help
+poetry run logit-model --help
 ```

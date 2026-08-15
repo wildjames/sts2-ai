@@ -10,8 +10,8 @@ from pathlib import Path
 import click
 import numpy as np
 
-from sts2_card_pick.dataset import Dataset, build_dataset_from_path
-from sts2_card_pick.model import CardPickModel
+from logit_model.dataset import Dataset, build_dataset_from_path
+from logit_model.model import CardPickModel
 from sts2_utils import GameState
 from sts2_utils.game_state import Card, Relic
 
@@ -35,8 +35,16 @@ def preprocess(data: str, output: str, player_id: int, cards_json: str, relics_j
 
     DATA is a .jsonl file or directory of .json run files.
     """
-    click.echo(f"Building dataset from {data} ...")
-    dataset, _, _ = build_dataset_from_path(data, cards_json, relics_json, player_id)
+    data_path = Path(data)
+    if data_path.is_file() and data_path.suffix == ".jsonl":
+        n_runs = sum(1 for line in open(data_path) if line.strip())
+    elif data_path.is_dir():
+        n_runs = len(list(data_path.glob("*.json")))
+    else:
+        n_runs = 0
+
+    with click.progressbar(length=n_runs, label="Building dataset") as bar:
+        dataset, _, _ = build_dataset_from_path(data, cards_json, relics_json, player_id, progress_callback=bar.update)
 
     n_groups = len(np.unique(dataset.groups))
     click.echo(
@@ -106,7 +114,14 @@ def train(dataset_path: str, output: str, regularisation: float, max_iter: int, 
     backend = "GPU (cuML)" if gpu else "CPU"
     click.echo(f"Training on {backend} (C={regularisation}, max_iter={max_iter}) ...")
     model = CardPickModel(dataset.card_vocab, dataset.relic_vocab, C=regularisation, max_iter=max_iter, gpu=gpu)
-    model.fit(dataset)
+
+    n_pairs = int((dataset.y == 0).sum())
+    chunk_size = 2_000_000
+    n_chunks = (n_pairs + chunk_size - 1) // chunk_size
+    with click.progressbar(length=n_chunks + 1, label="Training") as bar:
+        model._progress_callback = bar.update
+        model.fit(dataset)
+        bar.update(1)  # account for the sklearn/cuML fit step
 
     model.save(output)
     click.echo(f"Model saved to {output}")
@@ -136,7 +151,6 @@ def evaluate(model_path: str, dataset_path: str, gpu: bool) -> None:
     click.echo(f"Evaluating on {n_groups} choice sets ...")
 
     beta = model._model.coef_.ravel()
-    unique_groups = np.unique(dataset.groups)
 
     if gpu:
         import cupy as cp
@@ -148,21 +162,32 @@ def evaluate(model_path: str, dataset_path: str, gpu: bool) -> None:
     else:
         all_scores = np.asarray(dataset.X @ beta).ravel()
 
+    # Sort by group once to avoid O(n_rows) scan per group
+    order = np.argsort(dataset.groups, kind="mergesort")
+    sorted_groups = dataset.groups[order]
+    sorted_scores = all_scores[order]
+    sorted_y = dataset.y[order]
+
+    unique_groups = np.unique(sorted_groups)
+    boundaries = np.searchsorted(sorted_groups, unique_groups, side="left")
+    ends = np.append(boundaries[1:], len(sorted_groups))
+
     correct = 0
     total_ll = 0.0
-    for g in unique_groups:
-        mask = dataset.groups == g
-        scores = all_scores[mask]
-        y_g = dataset.y[mask]
+    with click.progressbar(range(n_groups), label="Scoring") as bar:
+        for i in bar:
+            sl = slice(boundaries[i], ends[i])
+            scores = sorted_scores[sl]
+            y_g = sorted_y[sl]
 
-        scores = scores - scores.max()
-        exp_scores = np.exp(scores)
-        probs = exp_scores / exp_scores.sum()
+            scores = scores - scores.max()
+            exp_scores = np.exp(scores)
+            probs = exp_scores / exp_scores.sum()
 
-        if np.argmax(probs) == np.argmax(y_g):
-            correct += 1
+            if np.argmax(probs) == np.argmax(y_g):
+                correct += 1
 
-        total_ll += np.log(max(float(probs[np.argmax(y_g)]), 1e-12))
+            total_ll += np.log(max(float(probs[np.argmax(y_g)]), 1e-12))
 
     accuracy = correct / n_groups
     mean_ll = total_ll / n_groups
@@ -187,23 +212,22 @@ def inspect(model_path: str) -> None:
     click.echo(f"  C (regularisation):   {model._C}")
 
     # Show top positive and negative coefficients in the card one-hot section
-    card_offset = len(model.card_vocab) + len(model.relic_vocab) + 2
-    card_beta = beta[card_offset:]
-    if len(card_beta) == len(model.card_vocab):
-        indices = np.argsort(card_beta)
-        ids = model.card_vocab.ids
+    V = len(model.card_vocab)
+    card_beta = beta[:V]
+    indices = np.argsort(card_beta)
+    ids = model.card_vocab.ids
 
-        click.echo("\n  Top 10 most-picked cards (by coefficient):")
-        for i in indices[-10:][::-1]:
-            if card_beta[i] == 0:
-                break
-            click.echo(f"    {ids[i]:30s}  {card_beta[i]:+.4f}")
+    click.echo("\n  Top 10 most-picked cards (by base coefficient):")
+    for i in indices[-10:][::-1]:
+        if card_beta[i] == 0:
+            break
+        click.echo(f"    {ids[i]:30s}  {card_beta[i]:+.4f}")
 
-        click.echo("\n  Top 10 most-skipped cards (by coefficient):")
-        for i in indices[:10]:
-            if card_beta[i] == 0:
-                break
-            click.echo(f"    {ids[i]:30s}  {card_beta[i]:+.4f}")
+    click.echo("\n  Top 10 most-skipped cards (by base coefficient):")
+    for i in indices[:10]:
+        if card_beta[i] == 0:
+            break
+        click.echo(f"    {ids[i]:30s}  {card_beta[i]:+.4f}")
 
 
 @main.command()

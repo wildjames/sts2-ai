@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
 
-from sts2_card_pick.dataset import Dataset
-from sts2_card_pick.model import CardPickModel
-from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
+from logit_model.dataset import Dataset
+from logit_model.model import CardPickModel
+from logit_model.vocabulary import CardVocabulary, RelicVocabulary
 from sts2_utils import Card, GameState, Relic
 
 
@@ -31,28 +31,29 @@ def _make_state() -> GameState:
 
 def _synthetic_dataset(card_vocab, relic_vocab, n_groups: int = 40) -> Dataset:
     """Build a dataset where 'fireball' is always picked over 'heal'."""
-    from sts2_card_pick.features import encode_card_features, encode_state_features
+    from logit_model.features import encode_choice_set
+    from sts2_utils import CardChoiceResult
 
     state = _make_state()
-    state_feat = encode_state_features(state, card_vocab, relic_vocab)
-
-    rows, labels, groups = [], [], []
+    all_X, all_y, all_groups = [], [], []
     for g in range(n_groups):
-        for card_id in ["fireball", "heal"]:
-            card_feat = encode_card_features(card_id, card_vocab)
-            rows.append(np.concatenate([state_feat, card_feat]))
-            labels.append(1.0 if card_id == "fireball" else 0.0)
-            groups.append(g)
-        # skip row
-        skip_feat = encode_card_features(None, card_vocab)
-        rows.append(np.concatenate([state_feat, skip_feat]))
-        labels.append(0.0)
-        groups.append(g)
+        choices = CardChoiceResult(
+            offered=[Card(id="fireball"), Card(id="heal")],
+            picked=Card(id="fireball"),
+        )
+        X, picked_idx = encode_choice_set(state, choices, card_vocab, relic_vocab)
+        n_alts = X.shape[0]
+        y = np.zeros(n_alts, dtype=np.float32)
+        y[picked_idx] = 1.0
+        all_X.append(X)
+        all_y.append(y)
+        all_groups.append(np.full(n_alts, g, dtype=np.int64))
 
+    from scipy.sparse import vstack
     return Dataset(
-        X=csr_matrix(np.stack(rows).astype(np.float32)),
-        y=np.array(labels, dtype=np.float32),
-        groups=np.array(groups, dtype=np.int64),
+        X=vstack(all_X, format="csr"),
+        y=np.concatenate(all_y),
+        groups=np.concatenate(all_groups),
     )
 
 

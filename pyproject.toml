@@ -16,7 +16,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
-card-pick-model = { path = "card_pick_model", develop = true }
+logit_model = { path = "logit_model", develop = true }
 sts2-downloader = { path = "downloader", develop = true }
 sts2-utils = { path = "sts2_utils", develop = true }
 

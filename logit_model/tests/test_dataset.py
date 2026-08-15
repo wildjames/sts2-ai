@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sts2_card_pick.dataset import (
+from logit_model.dataset import (
     Dataset,
     _collect_ids_from_run,
     build_dataset,
@@ -14,7 +14,7 @@ from sts2_card_pick.dataset import (
     build_vocabularies,
     load_runs,
 )
-from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
+from logit_model.vocabulary import CardVocabulary, RelicVocabulary
 from sts2_utils import load_run
 
 REAL_DATA_DIR = Path(__file__).resolve().parent / ".." / ".." / "sts2_utils" / "tests" / "test_data"
@@ -174,14 +174,16 @@ class TestBuildDataset:
     def test_feature_width(self, real_run):
         card_vocab, relic_vocab = build_vocabularies([real_run])
         dataset = build_dataset([real_run], card_vocab, relic_vocab)
-        expected = 2 * len(card_vocab) + len(relic_vocab) + 2
+        from logit_model.features import feature_dim
+        expected = feature_dim(card_vocab, relic_vocab)
         assert dataset.X.shape[1] == expected
 
     def test_empty_runs(self):
         card_vocab = CardVocabulary(["CARD.A"])
         relic_vocab = RelicVocabulary(["RELIC.X"])
         dataset = build_dataset([], card_vocab, relic_vocab)
-        assert dataset.X.shape == (0, 2 * 1 + 1 + 2)
+        from logit_model.features import feature_dim
+        assert dataset.X.shape == (0, feature_dim(card_vocab, relic_vocab))
         assert dataset.y.shape == (0,)
         assert dataset.groups.shape == (0,)
 

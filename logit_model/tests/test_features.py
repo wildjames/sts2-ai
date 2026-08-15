@@ -4,12 +4,13 @@ import numpy as np
 import pytest
 
 from sts2_utils import Card, CardChoiceResult, GameState, Relic
-from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
-from sts2_card_pick.features import (
+from logit_model.vocabulary import CardVocabulary, RelicVocabulary
+from logit_model.features import (
     encode_card_features,
     encode_choice_set,
     encode_state_features,
     feature_dim,
+    state_dim,
 )
 
 CARD_IDS = ["CARD.STRIKE", "CARD.DEFEND", "CARD.BASH", "CARD.INFLAME", "CARD.SHRUG"]
@@ -152,7 +153,9 @@ class TestEncodeCardFeatures:
 
 class TestFeatureDim:
     def test_value(self, card_vocab, relic_vocab):
-        expected = 2 * len(card_vocab) + len(relic_vocab) + 2
+        V = len(card_vocab)
+        S = state_dim(card_vocab, relic_vocab)
+        expected = V + V * S
         assert feature_dim(card_vocab, relic_vocab) == expected
 
     def test_matches_output_shape(self, card_vocab, relic_vocab):
@@ -201,15 +204,14 @@ class TestEncodeChoiceSet:
         _, y = encode_choice_set(state, choices, card_vocab, relic_vocab)
         assert y == 2  # skip is at index len(offered)
 
-    def test_skip_row_has_zero_card_features(self, card_vocab, relic_vocab):
+    def test_skip_row_is_all_zeros(self, card_vocab, relic_vocab):
         state = _make_state(deck_ids=["CARD.STRIKE"])
         offered = [Card(id="CARD.BASH")]
         choices = CardChoiceResult(offered=offered, picked=None)
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
         X_dense = X.toarray()
         skip_row = X_dense[-1]
-        card_feature_slice = skip_row[len(card_vocab) + len(relic_vocab) + 2 :]
-        assert card_feature_slice.sum() == 0.0
+        assert skip_row.sum() == 0.0
 
     def test_offered_row_has_correct_card_onehot(self, card_vocab, relic_vocab):
         state = _make_state()
@@ -217,17 +219,15 @@ class TestEncodeChoiceSet:
         choices = CardChoiceResult(offered=offered, picked=Card(id="CARD.BASH"))
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
         X_dense = X.toarray()
-        card_start = len(card_vocab) + len(relic_vocab) + 2
-        # First row: BASH
-        row0_card = X_dense[0, card_start:]
-        assert row0_card[card_vocab["CARD.BASH"]] == 1.0
-        assert row0_card.sum() == 1.0
-        # Second row: INFLAME
-        row1_card = X_dense[1, card_start:]
-        assert row1_card[card_vocab["CARD.INFLAME"]] == 1.0
-        assert row1_card.sum() == 1.0
+        V = len(card_vocab)
+        # First row: BASH one-hot in first V columns
+        assert X_dense[0, card_vocab["CARD.BASH"]] == 1.0
+        assert X_dense[0, :V].sum() == 1.0
+        # Second row: INFLAME one-hot in first V columns
+        assert X_dense[1, card_vocab["CARD.INFLAME"]] == 1.0
+        assert X_dense[1, :V].sum() == 1.0
 
-    def test_state_features_identical_across_rows(self, card_vocab, relic_vocab):
+    def test_interaction_block_contains_state(self, card_vocab, relic_vocab):
         state = _make_state(
             deck_ids=["CARD.STRIKE", "CARD.DEFEND"],
             relic_ids=["RELIC.ANCHOR"],
@@ -237,11 +237,19 @@ class TestEncodeChoiceSet:
         choices = CardChoiceResult(offered=offered, picked=Card(id="CARD.BASH"))
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
         X_dense = X.toarray()
-        state_width = len(card_vocab) + len(relic_vocab) + 2
-        for i in range(1, X_dense.shape[0]):
-            np.testing.assert_array_equal(X_dense[0, :state_width], X_dense[i, :state_width])
+        V = len(card_vocab)
+        S = state_dim(card_vocab, relic_vocab)
+        expected_state = encode_state_features(state, card_vocab, relic_vocab)
+        # BASH row: interaction block at V + BASH_idx * S
+        bash_idx = card_vocab["CARD.BASH"]
+        bash_block = X_dense[0, V + bash_idx * S : V + (bash_idx + 1) * S]
+        np.testing.assert_array_almost_equal(bash_block, expected_state)
+        # INFLAME row: interaction block at V + INFLAME_idx * S
+        inflame_idx = card_vocab["CARD.INFLAME"]
+        inflame_block = X_dense[1, V + inflame_idx * S : V + (inflame_idx + 1) * S]
+        np.testing.assert_array_almost_equal(inflame_block, expected_state)
 
-    def test_deck_counts_in_state_section(self, card_vocab, relic_vocab):
+    def test_deck_counts_in_interaction_block(self, card_vocab, relic_vocab):
         state = _make_state(deck_ids=["CARD.STRIKE", "CARD.STRIKE", "CARD.BASH"])
         choices = CardChoiceResult(
             offered=[Card(id="CARD.DEFEND")],
@@ -249,20 +257,23 @@ class TestEncodeChoiceSet:
         )
         X, _ = encode_choice_set(state, choices, card_vocab, relic_vocab)
         row = X.toarray()[0]
-        assert row[card_vocab["CARD.STRIKE"]] == 2.0
-        assert row[card_vocab["CARD.BASH"]] == 1.0
-        assert row[card_vocab["CARD.DEFEND"]] == 0.0  # in deck section, not offer
+        V = len(card_vocab)
+        S = state_dim(card_vocab, relic_vocab)
+        defend_idx = card_vocab["CARD.DEFEND"]
+        block_start = V + defend_idx * S
+        # Deck counts are at the start of the state vector within the block
+        assert row[block_start + card_vocab["CARD.STRIKE"]] == 2.0
+        assert row[block_start + card_vocab["CARD.BASH"]] == 1.0
 
     def test_unknown_offered_card(self, card_vocab, relic_vocab):
-        """An offered card not in the vocabulary gets an all-zero one-hot."""
+        """An offered card not in the vocabulary gets an all-zero row."""
         state = _make_state()
         choices = CardChoiceResult(
             offered=[Card(id="CARD.UNKNOWN")],
             picked=Card(id="CARD.UNKNOWN"),
         )
         X, y = encode_choice_set(state, choices, card_vocab, relic_vocab)
-        card_start = len(card_vocab) + len(relic_vocab) + 2
-        assert X.toarray()[0, card_start:].sum() == 0.0
+        assert X.toarray()[0].sum() == 0.0
         assert y == 0
 
     def test_enchanted_card_match(self, card_vocab, relic_vocab):
@@ -327,9 +338,7 @@ class TestEncodeChoiceSetIntegration:
         offered = [Card(id="CARD.INFLAME"), Card(id="CARD.SHRUG"), Card(id="CARD.C50")]
         choices = CardChoiceResult(offered=offered, picked=Card(id="CARD.SHRUG"))
         X, y = encode_choice_set(state, choices, big_card_vocab, big_relic_vocab)
-        n_cards = len(big_card_vocab)
-        n_relics = len(big_relic_vocab)
-        assert X.shape == (4, 2 * n_cards + n_relics + 2)
+        assert X.shape == (4, feature_dim(big_card_vocab, big_relic_vocab))
         assert y == 1
 
     def test_hp_ratio_propagated(self, big_card_vocab, big_relic_vocab):
@@ -339,5 +348,9 @@ class TestEncodeChoiceSetIntegration:
             picked=None,
         )
         X, _ = encode_choice_set(state, choices, big_card_vocab, big_relic_vocab)
-        hp_idx = len(big_card_vocab) + len(big_relic_vocab)
-        assert X.toarray()[0, hp_idx] == pytest.approx(30 / 75)
+        V = len(big_card_vocab)
+        S = state_dim(big_card_vocab, big_relic_vocab)
+        strike_idx = big_card_vocab["CARD.STRIKE"]
+        hp_offset_in_state = len(big_card_vocab) + len(big_relic_vocab)
+        col = V + strike_idx * S + hp_offset_in_state
+        assert X.toarray()[0, col] == pytest.approx(30 / 75)

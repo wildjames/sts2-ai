@@ -9,8 +9,8 @@ from typing import Iterable, Iterator
 import numpy as np
 from scipy import sparse
 
-from sts2_card_pick.features import encode_choice_set, feature_dim
-from sts2_card_pick.vocabulary import CardVocabulary, RelicVocabulary
+from logit_model.features import encode_choice_set, feature_dim
+from logit_model.vocabulary import CardVocabulary, RelicVocabulary
 from sts2_utils import build_game_state, get_card_choices
 
 logger = logging.getLogger(__name__)
@@ -173,8 +173,8 @@ def build_vocabularies_from_files(
     with open(relics_json) as f:
         relics = json.load(f)
 
-    card_ids = sorted({card["id"] for card in cards})
-    relic_ids = sorted({relic["id"] for relic in relics})
+    card_ids = sorted({f"CARD.{card['id']}" for card in cards})
+    relic_ids = sorted({f"RELIC.{relic['id']}" for relic in relics})
 
     return CardVocabulary(card_ids), RelicVocabulary(relic_ids)
 
@@ -184,6 +184,7 @@ def build_dataset(
     card_vocab: CardVocabulary,
     relic_vocab: RelicVocabulary,
     player_id: int = 1,
+    progress_callback: object | None = None,
 ) -> Dataset:
     """Pass 2: encode every card-choice screen into feature rows."""
     all_X: list[sparse.csr_matrix] = []
@@ -192,6 +193,8 @@ def build_dataset(
     group_id = 0
 
     for run_data in runs:
+        if progress_callback is not None:
+            progress_callback(1)
         n_floors = _total_floors(run_data)
         for floor in range(1, n_floors + 1):
             try:
@@ -246,6 +249,7 @@ def build_dataset_from_path(
     cards_json: str | Path,
     relics_json: str | Path,
     player_id: int = 1,
+    progress_callback: object | None = None,
 ) -> tuple[Dataset, CardVocabulary, RelicVocabulary]:
     """Build a dataset using static card/relic vocabulary files.
 
@@ -259,5 +263,5 @@ def build_dataset_from_path(
         ``(dataset, card_vocab, relic_vocab)`` tuple.
     """
     card_vocab, relic_vocab = build_vocabularies_from_files(cards_json, relics_json)
-    dataset = build_dataset(load_runs(path), card_vocab, relic_vocab, player_id)
+    dataset = build_dataset(load_runs(path), card_vocab, relic_vocab, player_id, progress_callback=progress_callback)
     return dataset, card_vocab, relic_vocab

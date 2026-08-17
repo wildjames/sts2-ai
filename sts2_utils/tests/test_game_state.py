@@ -6,6 +6,7 @@ from sts2_utils.game_state import build_game_state, get_card_choices, get_relic_
 FIXTURE_PATH = (
     Path(__file__).resolve().parent
     / "test_data"
+    / "runs"
     / "regent_data_1.json"
 )
 
@@ -198,6 +199,7 @@ class TestFinalState:
 NECRO_DATA_1 = (
     Path(__file__).resolve().parent
     / "test_data"
+    / "runs"
     / "necro_data_1.json"
 )
 
@@ -339,6 +341,7 @@ class TestCardChoices:
 FIXTURE_PATH_GLAM = (
     Path(__file__).resolve().parent
     / "test_data"
+    / "runs"
     / "glam_data_1.json"
 )
 

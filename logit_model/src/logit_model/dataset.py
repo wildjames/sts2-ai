@@ -11,7 +11,7 @@ from scipy import sparse
 
 from logit_model.features import encode_choice_set, feature_dim
 from logit_model.vocabulary import CardVocabulary, RelicVocabulary
-from sts2_utils import build_game_state, get_card_choices
+from sts2_utils import build_game_state, get_card_choices, load_runs
 
 logger = logging.getLogger(__name__)
 
@@ -91,23 +91,6 @@ class Dataset:
         )
 
 
-def load_runs(path: str | Path) -> Iterator[dict]:
-    """Yield run dicts from a ``.jsonl`` file or a directory of ``.json`` files."""
-    path = Path(path)
-    if path.is_file() and path.suffix == ".jsonl":
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    yield json.loads(line)
-    elif path.is_dir():
-        for json_file in sorted(path.glob("*.json")):
-            with open(json_file) as f:
-                yield json.load(f)
-    else:
-        raise ValueError(f"Expected a .jsonl file or a directory, got: {path}")
-
-
 def _total_floors(run_data: dict) -> int:
     return sum(len(act) for act in run_data["map_point_history"])
 
@@ -143,24 +126,6 @@ def _collect_ids_from_run(
                     relic_ids.add(choice["choice"])
 
     return card_ids, relic_ids
-
-
-def build_vocabularies(
-    runs: Iterable[dict], player_id: int = 1,
-) -> tuple[CardVocabulary, RelicVocabulary]:
-    """Pass 1: scan all runs to build card and relic vocabularies."""
-    all_card_ids: set[str] = set()
-    all_relic_ids: set[str] = set()
-
-    for run_data in runs:
-        card_ids, relic_ids = _collect_ids_from_run(run_data, player_id)
-        all_card_ids.update(card_ids)
-        all_relic_ids.update(relic_ids)
-
-    return (
-        CardVocabulary(sorted(all_card_ids)),
-        RelicVocabulary(sorted(all_relic_ids)),
-    )
 
 
 def build_vocabularies_from_files(

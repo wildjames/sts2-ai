@@ -6,7 +6,6 @@ import pytest
 from sts2_utils import Card, CardChoiceResult, GameState, Relic
 from logit_model.vocabulary import CardVocabulary, RelicVocabulary
 from logit_model.features import (
-    encode_card_features,
     encode_choice_set,
     encode_state_features,
     feature_dim,
@@ -124,28 +123,6 @@ class TestEncodeStateFeatures:
     def test_dtype_is_float32(self, card_vocab, relic_vocab):
         state = _make_state()
         features = encode_state_features(state, card_vocab, relic_vocab)
-        assert features.dtype == np.float32
-
-
-# ---------- encode_card_features ----------
-
-class TestEncodeCardFeatures:
-    def test_known_card(self, card_vocab):
-        features = encode_card_features("CARD.BASH", card_vocab)
-        assert features.shape == (len(card_vocab),)
-        assert features[card_vocab["CARD.BASH"]] == 1.0
-        assert features.sum() == 1.0
-
-    def test_skip_is_all_zeros(self, card_vocab):
-        features = encode_card_features(None, card_vocab)
-        assert features.sum() == 0.0
-
-    def test_unknown_card_is_all_zeros(self, card_vocab):
-        features = encode_card_features("CARD.NONEXISTENT", card_vocab)
-        assert features.sum() == 0.0
-
-    def test_dtype_is_float32(self, card_vocab):
-        features = encode_card_features("CARD.STRIKE", card_vocab)
         assert features.dtype == np.float32
 
 

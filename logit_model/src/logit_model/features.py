@@ -28,26 +28,14 @@ def encode_state_features(
         if idx is not None:
             relic_flags[idx] = 1.0
 
-    hp_ratio = state.current_hp / 100.0
+    hp_ratio = state.current_hp / state.max_hp if state.max_hp else 0.0
+    floor_value = float(state.floor)
 
     return np.concatenate([
         deck_counts,
         relic_flags,
-        np.array([hp_ratio, state.floor], dtype=np.float32),
+        np.array([hp_ratio, floor_value], dtype=np.float32),
     ])
-
-
-def encode_card_features(
-    card_id: str | None,
-    card_vocab: CardVocabulary,
-) -> np.ndarray:
-    """One-hot encode a single card. ``None`` means skip (all zeros)."""
-    features = np.zeros(len(card_vocab), dtype=np.float32)
-    if card_id is not None:
-        idx = card_vocab.get(card_id)
-        if idx is not None:
-            features[idx] = 1.0
-    return features
 
 
 def state_dim(card_vocab: CardVocabulary, relic_vocab: RelicVocabulary) -> int:

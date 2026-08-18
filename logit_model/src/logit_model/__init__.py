@@ -1,8 +1,8 @@
 """Card pick prediction logit model for Slay the Spire 2."""
 
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
-from logit_model.features import encode_choice_set, encode_state_features, state_dim
-from logit_model.dataset import Dataset, build_dataset, build_dataset_from_path, build_vocabularies_from_files
+from sts2_utils import CardVocabulary, RelicVocabulary
+from sts2_utils.features import encode_choice_set, encode_state_features, state_dim, feature_dim
+from logit_model.dataset import Dataset, build_dataset, build_dataset_from_path
 from logit_model.model import CardPickModel
 
 __all__ = [
@@ -10,9 +10,10 @@ __all__ = [
     "RelicVocabulary",
     "encode_choice_set",
     "encode_state_features",
+    "state_dim",
+    "feature_dim",
     "Dataset",
     "build_dataset",
     "build_dataset_from_path",
-    "build_vocabularies_from_files",
     "CardPickModel",
 ]

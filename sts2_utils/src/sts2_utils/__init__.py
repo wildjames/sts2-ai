@@ -26,6 +26,12 @@ from sts2_utils.game_state import (
     load_run,
 )
 from sts2_utils.datasets import load_runs
+from sts2_utils.vocabularies import (
+    CardVocabulary,
+    RelicVocabulary,
+    Vocabulary,
+    build_vocabularies_from_files,
+)
 
 __all__ = [
     "Card",
@@ -37,5 +43,9 @@ __all__ = [
     "get_card_choices",
     "get_relic_choices",
     "load_run",
-    "loa+d_runs",
+    "load_runs",
+    "Vocabulary",
+    "CardVocabulary",
+    "RelicVocabulary",
+    "build_vocabularies_from_files",
 ]

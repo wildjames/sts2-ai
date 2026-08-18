@@ -11,10 +11,9 @@ from logit_model.dataset import (
     _collect_ids_from_run,
     build_dataset,
     build_dataset_from_path,
-    build_vocabularies_from_files,
 )
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
-from sts2_utils import load_run
+from sts2_utils import CardVocabulary, RelicVocabulary
+from sts2_utils import load_run, build_vocabularies_from_files
 
 TEST_DATA_DIR = Path(__file__).resolve().parent / ".." / ".." / "sts2_utils" / "tests" / "test_data"
 DATA_DIR = Path(__file__).resolve().parent / ".." / ".." / "data"
@@ -121,7 +120,7 @@ class TestBuildDataset:
     def test_feature_width(self, real_run):
         card_vocab, relic_vocab = build_vocabularies_from_files(CARDS, RELICS)
         dataset = build_dataset([real_run], card_vocab, relic_vocab)
-        from logit_model.features import feature_dim
+        from sts2_utils.features import feature_dim
         expected = feature_dim(card_vocab, relic_vocab)
         assert dataset.X.shape[1] == expected
 
@@ -129,7 +128,7 @@ class TestBuildDataset:
         card_vocab = CardVocabulary(["CARD.A"])
         relic_vocab = RelicVocabulary(["RELIC.X"])
         dataset = build_dataset([], card_vocab, relic_vocab)
-        from logit_model.features import feature_dim
+        from sts2_utils.features import feature_dim
         assert dataset.X.shape == (0, feature_dim(card_vocab, relic_vocab))
         assert dataset.y.shape == (0,)
         assert dataset.groups.shape == (0,)

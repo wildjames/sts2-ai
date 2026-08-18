@@ -9,9 +9,8 @@ from gbm_model.dataset import (
   Dataset,
   build_dataset,
   build_dataset_from_path,
-  build_vocabularies_from_files
 )
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
+from sts2_utils import CardVocabulary, RelicVocabulary
 from sts2_utils import load_run
 
 TEST_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "sts2_utils" / "tests" / "test_data"
@@ -119,12 +118,3 @@ class TestBuildDataset:
         for group_id in np.unique(dataset.groups):
             mask = dataset.groups == group_id
             assert dataset.y[mask].sum() == pytest.approx(1.0)
-
-
-def test_build_vocabularies_from_files():
-    card_vocab, relic_vocab = build_vocabularies_from_files(CARDS, RELICS)
-
-    assert len(card_vocab) > 0
-    assert len(relic_vocab) > 0
-    assert "CARD.ABRASIVE" in card_vocab.ids
-    assert "RELIC.ANCHOR" in relic_vocab.ids

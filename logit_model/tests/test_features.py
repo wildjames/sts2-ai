@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from sts2_utils import Card, CardChoiceResult, GameState, Relic
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
+from sts2_utils import CardVocabulary, RelicVocabulary
 from logit_model.features import (
     encode_choice_set,
     encode_state_features,

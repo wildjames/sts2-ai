@@ -9,9 +9,9 @@ from typing import Iterable, Iterator
 import numpy as np
 from scipy import sparse
 
-from logit_model.features import encode_choice_set, feature_dim
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
-from sts2_utils import build_game_state, get_card_choices, load_runs
+from sts2_utils.features import encode_choice_set, feature_dim
+from sts2_utils import CardVocabulary, RelicVocabulary
+from sts2_utils import build_game_state, get_card_choices, load_runs, build_vocabularies_from_files
 
 logger = logging.getLogger(__name__)
 
@@ -126,22 +126,6 @@ def _collect_ids_from_run(
                     relic_ids.add(choice["choice"])
 
     return card_ids, relic_ids
-
-
-def build_vocabularies_from_files(
-    cards_json: str | Path,
-    relics_json: str | Path,
-) -> tuple[CardVocabulary, RelicVocabulary]:
-    """Build vocabularies from the static cards.json and relics.json data files."""
-    with open(cards_json) as f:
-        cards = json.load(f)
-    with open(relics_json) as f:
-        relics = json.load(f)
-
-    card_ids = sorted({f"CARD.{card['id']}" for card in cards})
-    relic_ids = sorted({f"RELIC.{relic['id']}" for relic in relics})
-
-    return CardVocabulary(card_ids), RelicVocabulary(relic_ids)
 
 
 def build_dataset(

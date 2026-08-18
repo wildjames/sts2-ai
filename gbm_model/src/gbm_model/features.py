@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-# TODO: This should live in the utils module
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
-from sts2_utils import GameState
+from sts2_utils import CardVocabulary, GameState, RelicVocabulary
 
 
 def encode_row(

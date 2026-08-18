@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary, Vocabulary
+from sts2_utils import CardVocabulary, RelicVocabulary, Vocabulary
 
 
 class TestVocabulary:

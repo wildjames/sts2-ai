@@ -8,8 +8,8 @@ from scipy import sparse
 from sklearn.linear_model import LogisticRegression
 
 from logit_model.dataset import Dataset
-from logit_model.features import encode_state_features, state_dim
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
+from sts2_utils.features import encode_state_features, state_dim
+from sts2_utils import CardVocabulary, RelicVocabulary
 from sts2_utils import GameState
 
 

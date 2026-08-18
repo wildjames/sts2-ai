@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.sparse import csr_matrix
 
-from sts2_utils import CardChoiceResult, GameState, CardVocabulary, RelicVocabulary
+from sts2_utils.game_state import CardChoiceResult, GameState
 
 
 def encode_state_features(

@@ -31,7 +31,7 @@ def _make_state() -> GameState:
 
 def _synthetic_dataset(card_vocab, relic_vocab, n_groups: int = 40) -> Dataset:
     """Build a dataset where 'fireball' is always picked over 'heal'."""
-    from logit_model.features import encode_choice_set
+    from sts2_utils.features import encode_choice_set
     from sts2_utils import CardChoiceResult
 
     state = _make_state()

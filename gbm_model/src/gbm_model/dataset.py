@@ -8,8 +8,8 @@ from typing import Iterable
 import numpy as np
 
 from gbm_model.features import encode_row
-from logit_model.vocabulary import CardVocabulary, RelicVocabulary
-from sts2_utils import build_game_state, get_card_choices, load_runs
+from sts2_utils import CardVocabulary, RelicVocabulary
+from sts2_utils import build_game_state, get_card_choices, load_runs, build_vocabularies_from_files
 
 
 @dataclass
@@ -79,20 +79,6 @@ class Dataset:
                 relic_vocab=self.relic_vocab,
             ),
         )
-
-
-def build_vocabularies_from_files(
-    cards_json: str | Path,
-    relics_json: str | Path,
-) -> tuple[CardVocabulary, RelicVocabulary]:
-    with open(cards_json) as f:
-        cards = json.load(f)
-    with open(relics_json) as f:
-        relics = json.load(f)
-
-    card_ids = sorted({f"CARD.{card['id']}" for card in cards})
-    relic_ids = sorted({f"RELIC.{relic['id']}" for relic in relics})
-    return CardVocabulary(card_ids), RelicVocabulary(relic_ids)
 
 
 def build_dataset(

@@ -102,6 +102,8 @@ def build_dataset(
     player_id: int = 1,
     progress_callback: object | None = None,
 ) -> Dataset:
+    """Converts each floor of the run into a row, and builds a dataset from that"""
+
     all_X: list[np.ndarray] = []
     all_y: list[np.ndarray] = []
     all_groups: list[np.ndarray] = []
